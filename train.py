@@ -616,6 +616,7 @@ def main(ctx, outdir, dry_run, **config_kwargs):
     print(f'Image resolution:   {args.training_set_kwargs.resolution}')
     print(f'Conditional model:  {args.training_set_kwargs.use_labels}')
     print(f'Dataset x-flips:    {args.training_set_kwargs.xflip}')
+    print(f'Save snapshot each ticks: {args.network_snapshot_ticks}')
     print()
 
     # Dry run?

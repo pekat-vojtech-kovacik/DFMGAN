@@ -101,8 +101,8 @@ def training_loop(
     random_seed             = 0,        # Global random seed.
     num_gpus                = 1,        # Number of GPUs participating in the training.
     rank                    = 0,        # Rank of the current process in [0, num_gpus[.
-    batch_size              = 4,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
-    batch_gpu               = 4,        # Number of samples processed at a time by one GPU.
+    batch_size              = 10,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
+    batch_gpu               = 10,        # Number of samples processed at a time by one GPU.
     ema_kimg                = 10,       # Half-life of the exponential moving average (EMA) of generator weights.
     ema_rampup              = None,     # EMA ramp-up coefficient.
     G_reg_interval          = 4,        # How often to perform regularization for G? None = disable lazy regularization.
@@ -112,9 +112,9 @@ def training_loop(
     ada_interval            = 4,        # How often to perform ADA adjustment?
     ada_kimg                = 500,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
     total_kimg              = 25000,    # Total length of the training, measured in thousands of real images.
-    kimg_per_tick           = 4,        # Progress snapshot interval.
-    image_snapshot_ticks    = 50,       # How often to save image snapshots? None = disable.
-    network_snapshot_ticks  = 50,       # How often to save network snapshots? None = disable.
+    kimg_per_tick           = 50,        # Progress snapshot interval.
+    image_snapshot_ticks    = 5,       # How often to save image snapshots? None = disable.
+    network_snapshot_ticks  = 5,       # How often to save network snapshots? None = disable.
     resume_pkl              = None,     # Network pickle to resume training from.
     cudnn_benchmark         = True,     # Enable torch.backends.cudnn.benchmark?
     allow_tf32              = False,    # Enable torch.backends.cuda.matmul.allow_tf32 and torch.backends.cudnn.allow_tf32?
@@ -472,6 +472,7 @@ def training_loop(
         fields += [f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"]
         torch.cuda.reset_peak_memory_stats()
         fields += [f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"]
+
         training_stats.report0('Timing/total_hours', (tick_end_time - start_time) / (60 * 60))
         training_stats.report0('Timing/total_days', (tick_end_time - start_time) / (24 * 60 * 60))
         if rank == 0:
@@ -507,7 +508,9 @@ def training_loop(
         # Save network snapshot.
         snapshot_pkl = None
         snapshot_data = None
+        print(f"Snapshot ticks: {network_snapshot_ticks}, Current tick:{cur_tick}")
         if (network_snapshot_ticks is not None) and (done or cur_tick % network_snapshot_ticks == 0):
+            print("Saving network ")
             snapshot_data = dict(training_set_kwargs=dict(training_set_kwargs))
             saving_modules = [('G', G), ('D', D), ('G_ema', G_ema), ('augment_pipe', augment_pipe)]
             if G_kwargs.transfer == 'res_block_match_dis':
@@ -525,43 +528,43 @@ def training_loop(
                     pickle.dump(snapshot_data, f)
 
         # Evaluate metrics.
-        if (snapshot_data is not None) and (len(metrics) > 0):
-            if rank == 0:
-                print('Evaluating metrics...')
-            for metric in metrics:
-                result_dict = metric_main.calc_metric(metric=metric, G=snapshot_data['G_ema'],
-                    dataset_kwargs=training_set_kwargs, num_gpus=num_gpus, rank=rank, device=device)
-                if rank == 0:
-                    metric_main.report_metric(result_dict, run_dir=run_dir, snapshot_pkl=snapshot_pkl)
-                stats_metrics.update(result_dict.results)
-        del snapshot_data # conserve memory
+        # if (snapshot_data is not None) and (len(metrics) > 0):
+        #     if rank == 0:
+        #         print('Evaluating metrics...')
+        #     for metric in metrics:
+        #         result_dict = metric_main.calc_metric(metric=metric, G=snapshot_data['G_ema'],
+        #             dataset_kwargs=training_set_kwargs, num_gpus=num_gpus, rank=rank, device=device)
+        #         if rank == 0:
+        #             metric_main.report_metric(result_dict, run_dir=run_dir, snapshot_pkl=snapshot_pkl)
+        #         stats_metrics.update(result_dict.results)
+        # del snapshot_data # conserve memory
 
-        # Collect statistics.
-        for phase in phases:
-            value = []
-            if (phase.start_event is not None) and (phase.end_event is not None):
-                phase.end_event.synchronize()
-                value = phase.start_event.elapsed_time(phase.end_event)
-            training_stats.report0('Timing/' + phase.name, value)
-        stats_collector.update()
-        stats_dict = stats_collector.as_dict()
+        # # Collect statistics.
+        # for phase in phases:
+        #     value = []
+        #     if (phase.start_event is not None) and (phase.end_event is not None):
+        #         phase.end_event.synchronize()
+        #         value = phase.start_event.elapsed_time(phase.end_event)
+        #     training_stats.report0('Timing/' + phase.name, value)
+        # stats_collector.update()
+        # stats_dict = stats_collector.as_dict()
 
-        # Update logs.
-        timestamp = time.time()
-        if stats_jsonl is not None:
-            fields = dict(stats_dict, timestamp=timestamp)
-            stats_jsonl.write(json.dumps(fields) + '\n')
-            stats_jsonl.flush()
-        if stats_tfevents is not None:
-            global_step = int(cur_nimg / 1e3)
-            walltime = timestamp - start_time
-            for name, value in stats_dict.items():
-                stats_tfevents.add_scalar(name, value.mean, global_step=global_step, walltime=walltime)
-            for name, value in stats_metrics.items():
-                stats_tfevents.add_scalar(f'Metrics/{name}', value, global_step=global_step, walltime=walltime)
-            stats_tfevents.flush()
-        if progress_fn is not None:
-            progress_fn(cur_nimg // 1000, total_kimg)
+        # # Update logs.
+        # timestamp = time.time()
+        # if stats_jsonl is not None:
+        #     fields = dict(stats_dict, timestamp=timestamp)
+        #     stats_jsonl.write(json.dumps(fields) + '\n')
+        #     stats_jsonl.flush()
+        # if stats_tfevents is not None:
+        #     global_step = int(cur_nimg / 1e3)
+        #     walltime = timestamp - start_time
+        #     for name, value in stats_dict.items():
+        #         stats_tfevents.add_scalar(name, value.mean, global_step=global_step, walltime=walltime)
+        #     for name, value in stats_metrics.items():
+        #         stats_tfevents.add_scalar(f'Metrics/{name}', value, global_step=global_step, walltime=walltime)
+        #     stats_tfevents.flush()
+        # if progress_fn is not None:
+        #     progress_fn(cur_nimg // 1000, total_kimg)
 
         # Update state.
         cur_tick += 1
