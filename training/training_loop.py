@@ -101,8 +101,8 @@ def training_loop(
     random_seed             = 0,        # Global random seed.
     num_gpus                = 1,        # Number of GPUs participating in the training.
     rank                    = 0,        # Rank of the current process in [0, num_gpus[.
-    batch_size              = 10,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
-    batch_gpu               = 10,        # Number of samples processed at a time by one GPU.
+    batch_size              = 6,        # Total batch size for one training iteration. Can be larger than batch_gpu * num_gpus.
+    batch_gpu               = 8,        # Number of samples processed at a time by one GPU.
     ema_kimg                = 10,       # Half-life of the exponential moving average (EMA) of generator weights.
     ema_rampup              = None,     # EMA ramp-up coefficient.
     G_reg_interval          = 4,        # How often to perform regularization for G? None = disable lazy regularization.
@@ -110,9 +110,9 @@ def training_loop(
     augment_p               = 0,        # Initial value of augmentation probability.
     ada_target              = None,     # ADA target value. None = fixed p.
     ada_interval            = 4,        # How often to perform ADA adjustment?
-    ada_kimg                = 500,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
+    ada_kimg                = 400,      # ADA adjustment speed, measured in how many kimg it takes for p to increase/decrease by one unit.
     total_kimg              = 25000,    # Total length of the training, measured in thousands of real images.
-    kimg_per_tick           = 50,        # Progress snapshot interval.
+    kimg_per_tick           = 5,        # Progress snapshot interval.
     image_snapshot_ticks    = 5,       # How often to save image snapshots? None = disable.
     network_snapshot_ticks  = 5,       # How often to save network snapshots? None = disable.
     resume_pkl              = None,     # Network pickle to resume training from.
@@ -127,6 +127,10 @@ def training_loop(
     D_match_opt_kwargs = {},
     D_match_reg_interval = 16,
 ):
+    # CRINGE - kimg_per_tick should be the same as saving but this cannot be setup
+    kimg_per_tick = image_snapshot_ticks
+    # end of CRINGE
+    
     # Initialize.
     start_time = time.time()
     device = torch.device('cuda', rank)

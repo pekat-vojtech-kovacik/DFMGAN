@@ -69,7 +69,8 @@ def open_image_folder(source_dir, *, max_images: Optional[int]):
         for idx, fname in enumerate(input_images):
             arch_fname = os.path.relpath(fname, source_dir)
             arch_fname = arch_fname.replace('\\', '/')
-            img = np.array(PIL.Image.open(fname))
+            # EDIT - .convert('RGB')
+            img = np.array(PIL.Image.open(fname).convert('RGB'))
             yield dict(img=img, label=labels.get(arch_fname), img_name = os.path.basename(fname))
             if idx >= max_idx-1:
                 break
@@ -445,6 +446,13 @@ def convert_dataset(
             img_idx, img_ext = os.path.splitext(image['img_name'])
             mask = np.array(PIL.Image.open(os.path.join(source_mask, f'{img_idx}_mask{img_ext}')))
             mask = transform_image(mask)
+            # EDIT - change to one channel
+            if len(mask.shape) == 3:
+                mask = mask[:, :, 0]
+            # EDIT - change to proper dims
+            if len(img.shape) == 2:
+                img = np.expand_dims(img, axis=-1)
+
             mask[mask >= 127.5] = 255
             mask[mask < 127.5] = 0
 
