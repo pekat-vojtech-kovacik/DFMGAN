@@ -193,6 +193,9 @@ def generate_images(
                     mask = torch.where(mask >= 0.0, 1.0, -1.0).repeat(1, 3, 1, 1)
                 else:
                     img = G.synthesis(ws, defect_ws, noise_mode=noise_mode, fix_residual_to_zero = False)
+                    # ADDED
+                    good_img = G.synthesis(ws, defect_ws, noise_mode=noise_mode, fix_residual_to_zero = True)
+                    #
                     mask = torch.where(mask >= 0.0, 1.0, -1.0).repeat(1, 3, 1, 1)
             else:
                 img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)

@@ -97,7 +97,7 @@ def training_loop(
     D_opt_kwargs            = {},       # Options for discriminator optimizer.
     augment_kwargs          = None,     # Options for augmentation pipeline. None = disable.
     loss_kwargs             = {},       # Options for loss function.
-    metrics                 = [],       # Metrics to evaluate during training.
+    metrics                 = ['fid5k_full', 'ppl2_wend'],       # Metrics to evaluate during training.
     random_seed             = 0,        # Global random seed.
     num_gpus                = 1,        # Number of GPUs participating in the training.
     rank                    = 0,        # Rank of the current process in [0, num_gpus[.
@@ -130,7 +130,7 @@ def training_loop(
     # CRINGE - kimg_per_tick should be the same as saving but this cannot be setup
     kimg_per_tick = image_snapshot_ticks
     # end of CRINGE
-    
+
     # Initialize.
     start_time = time.time()
     device = torch.device('cuda', rank)
@@ -514,7 +514,7 @@ def training_loop(
         snapshot_data = None
         print(f"Snapshot ticks: {network_snapshot_ticks}, Current tick:{cur_tick}")
         if (network_snapshot_ticks is not None) and (done or cur_tick % network_snapshot_ticks == 0):
-            print("Saving network ")
+            print("Saving network: ", end="")
             snapshot_data = dict(training_set_kwargs=dict(training_set_kwargs))
             saving_modules = [('G', G), ('D', D), ('G_ema', G_ema), ('augment_pipe', augment_pipe)]
             if G_kwargs.transfer == 'res_block_match_dis':
@@ -530,45 +530,49 @@ def training_loop(
             if rank == 0:
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
+            print("DONE")
 
-        # Evaluate metrics.
-        # if (snapshot_data is not None) and (len(metrics) > 0):
-        #     if rank == 0:
-        #         print('Evaluating metrics...')
-        #     for metric in metrics:
-        #         result_dict = metric_main.calc_metric(metric=metric, G=snapshot_data['G_ema'],
-        #             dataset_kwargs=training_set_kwargs, num_gpus=num_gpus, rank=rank, device=device)
-        #         if rank == 0:
-        #             metric_main.report_metric(result_dict, run_dir=run_dir, snapshot_pkl=snapshot_pkl)
-        #         stats_metrics.update(result_dict.results)
-        # del snapshot_data # conserve memory
+        if done:
+            # Evaluate metrics.
+            print(metrics)
+            metrics = ['fid5k_full', 'ppl2_wend']
+            if (snapshot_data is not None) and (len(metrics) > 0):
+                if rank == 0:
+                    print('Evaluating metrics...')
+                for metric in metrics:
+                    result_dict = metric_main.calc_metric(metric=metric, G=snapshot_data['G_ema'],
+                        dataset_kwargs=training_set_kwargs, num_gpus=num_gpus, rank=rank, device=device)
+                    if rank == 0:
+                        metric_main.report_metric(result_dict, run_dir=run_dir, snapshot_pkl=snapshot_pkl)
+                    stats_metrics.update(result_dict.results)
+            del snapshot_data # conserve memory
 
-        # # Collect statistics.
-        # for phase in phases:
-        #     value = []
-        #     if (phase.start_event is not None) and (phase.end_event is not None):
-        #         phase.end_event.synchronize()
-        #         value = phase.start_event.elapsed_time(phase.end_event)
-        #     training_stats.report0('Timing/' + phase.name, value)
-        # stats_collector.update()
-        # stats_dict = stats_collector.as_dict()
+            # Collect statistics.
+            for phase in phases:
+                value = []
+                if (phase.start_event is not None) and (phase.end_event is not None):
+                    phase.end_event.synchronize()
+                    value = phase.start_event.elapsed_time(phase.end_event)
+                training_stats.report0('Timing/' + phase.name, value)
+            stats_collector.update()
+            stats_dict = stats_collector.as_dict()
 
-        # # Update logs.
-        # timestamp = time.time()
-        # if stats_jsonl is not None:
-        #     fields = dict(stats_dict, timestamp=timestamp)
-        #     stats_jsonl.write(json.dumps(fields) + '\n')
-        #     stats_jsonl.flush()
-        # if stats_tfevents is not None:
-        #     global_step = int(cur_nimg / 1e3)
-        #     walltime = timestamp - start_time
-        #     for name, value in stats_dict.items():
-        #         stats_tfevents.add_scalar(name, value.mean, global_step=global_step, walltime=walltime)
-        #     for name, value in stats_metrics.items():
-        #         stats_tfevents.add_scalar(f'Metrics/{name}', value, global_step=global_step, walltime=walltime)
-        #     stats_tfevents.flush()
-        # if progress_fn is not None:
-        #     progress_fn(cur_nimg // 1000, total_kimg)
+            # Update logs.
+            timestamp = time.time()
+            if stats_jsonl is not None:
+                fields = dict(stats_dict, timestamp=timestamp)
+                stats_jsonl.write(json.dumps(fields) + '\n')
+                stats_jsonl.flush()
+            if stats_tfevents is not None:
+                global_step = int(cur_nimg / 1e3)
+                walltime = timestamp - start_time
+                for name, value in stats_dict.items():
+                    stats_tfevents.add_scalar(name, value.mean, global_step=global_step, walltime=walltime)
+                for name, value in stats_metrics.items():
+                    stats_tfevents.add_scalar(f'Metrics/{name}', value, global_step=global_step, walltime=walltime)
+                stats_tfevents.flush()
+            if progress_fn is not None:
+                progress_fn(cur_nimg // 1000, total_kimg)
 
         # Update state.
         cur_tick += 1
