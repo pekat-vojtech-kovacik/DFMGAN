@@ -1,5 +1,11 @@
-# Defect-aware Feature Manipulation GAN
+# Updated Features
+New implementation adds ```main.ipynb``` to tweak hyper-parameters and train DFMGAN on custom datasets easily.
 
+Other short scripts ```calculate_iou.py, read_parse_csv.py``` were used to process specific file types and instances that occured during training or evaluation.
+No documentation is available for these scritps as they are mostly for internal use and serve limited use cases.
+
+# Original source:
+# Defect-aware Feature Manipulation GAN
 <img src="./docs/fsdig.jpg" width="600">
 
 This repository is the official implementation of the following paper:

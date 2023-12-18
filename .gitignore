@@ -11,4 +11,6 @@ __pycache__/
 *.pth
 *.pkl
 *.gif
+*.jpeg
+*.jpg
 /test*
